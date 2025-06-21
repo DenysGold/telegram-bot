@@ -1,39 +1,49 @@
 import asyncio
 import logging
+import os
 from datetime import datetime
-from threading import Thread
-from flask import Flask
+
 from aiogram import Bot, Dispatcher, Router, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
-import db  # Обязательно создай файл db.py
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from flask import Flask
+from threading import Thread
 
-API_TOKEN = "7920083802:AAEi4cYNYg_oEPPXDldV8corWs7HgHwQtKI"
-ADMIN_ID = 911957250
-GROUP_CHAT_ID = -1000000000000  # Заменить на реальный ID
+import db
 
-# 🔹 Flask для keep-alive
+# 🔐 Загрузка конфигурации из переменных окружения
+API_TOKEN = os.getenv("API_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
+
+# ⚙️ Flask для keep-alive
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "✅ Бот работает (Flask)!"
 
-def keep_alive():
-    Thread(target=lambda: app.run(host='0.0.0.0', port=8080)).start()
+def run():
+    app.run(host='0.0.0.0', port=8080)
 
-# 🔹 Логгирование
+# 🧵 Запуск Flask в отдельном потоке
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# 🔧 Логирование
 logging.basicConfig(level=logging.INFO)
 
-# 🔹 Инициализация
+# 🤖 Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
+# Состояние рассылки
 broadcast_mode = {}
 
-# 🔹 Главное меню
+# Меню
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔥 ПОПАСТЬ В ЧАТ С СИГНАЛАМИ", callback_data="join_chat_info")],
     [InlineKeyboardButton(text="📝 ОТЗЫВЫ", callback_data="reviews")],
@@ -41,16 +51,11 @@ main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="😈 ОБО МНЕ", callback_data="about")]
 ])
 
-# 🔹 Клавиатура администратора
-admin_kb = ReplyKeyboardMarkup(
-    resize_keyboard=True,
-    keyboard=[
-        [KeyboardButton(text="📤 Рассылка"), KeyboardButton(text="📈 Статистика")],
-        [KeyboardButton(text="📥 Экспорт .xlsx"), KeyboardButton(text="➕ Добавить в чат")]
-    ]
-)
+admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
+    [KeyboardButton(text="📤 Рассылка"), KeyboardButton(text="📈 Статистика")],
+    [KeyboardButton(text="📥 Экспорт .xlsx"), KeyboardButton(text="➕ Добавить в чат")]
+])
 
-# 🔹 Старт
 @router.message(Command("start"))
 async def start_handler(message: types.Message):
     user = message.from_user
@@ -62,76 +67,110 @@ async def start_handler(message: types.Message):
 
     text = (
         "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
-        "🔹 сигналы на сделки\n🔹 инвестиционные идеи\n🔹 обучающие уроки\n\n"
-        "Для входа — зарегистрируйся на бирже BingX по ссылке:\n\n"
-        "👉 <a href='https://bingx.com/invite/XQ1AMO'>https://bingx.com/invite/XQ1AMO</a>\n"
-        "<b>Код: <code>XQ1AMO</code></b>\n\n"
-        "После регистрации напиши @Gold_Denys и отправь свой UID — добавим в закрытый чат."
+        "Здесь тебя ждут:\n"
+        "🔹 сигналы на сделки\n"
+        "🔹 инвестиционные идеи\n"
+        "🔹 обучающие уроки\n\n"
+        "Для того, чтобы попасть в него, тебе необходимо зарегистрироваться на бирже BingX и пополнить баланс.\n\n"
+        "<b>Для удобства прикрепляю инструкции:</b>\n\n"
+        "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>КАК ЗАРЕГИСТРИРОВАТЬСЯ НА БИРЖЕ BingX</a>\n\n"
+        "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>ПОШАГОВАЯ ИНСТРУКЦИЯ ПЕРЕНОСА ВЕРИФИКАЦИИ</a>\n\n"
+        "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>КАК КУПИТЬ КРИПТОВАЛЮТУ ЧЕРЕЗ P2P</a>\n\n"
+        "📘 <a href='https://telegra.ph/Rabota-so-sdelkami-na-BingX-06-13'>РАБОТА СО СДЕЛКАМИ НА BingX</a>\n\n"
+        "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>ОТКРЫТИЕ LONG/SHORT СДЕЛОК</a>\n\n"
+        "Если у тебя уже есть аккаунт на BingX — ты можешь <b>перенести его под мою ссылку</b>. Это несложно и займет 15 минут.\n\n"
+        "Вопросы — пиши: @Gold_Denys"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_kb, disable_web_page_preview=True)
 
-# 🔹 Коллбэки
+# Обработка callback'ов
 @router.callback_query(lambda c: c.data == "join_chat_info")
 async def join_chat_info(callback_query: types.CallbackQuery):
-    await callback_query.message.answer(
-        "<b>Чтобы попасть в чат с сигналами</b>\n\n"
-        "⚠️ Зарегистрируйся по ссылке:\n"
-        "👉 <a href='https://bingx.com/invite/XQ1AMO'>https://bingx.com/invite/XQ1AMO</a>\n"
-        "<b>UID пришли @Gold_Denys</b>", parse_mode="HTML", disable_web_page_preview=True
+    text = (
+        "<b>Чтобы попасть в чат с сигналами</b>\n"
+        "Есть одно условие —\n\n"
+        "⚠️ <b>БЫТЬ ЗАРЕГИСТРИРОВАННЫМ ПО МОЕЙ РЕФЕРАЛЬНОЙ ССЫЛКЕ</b>\n\n"
+        "👉 <a href='https://bingx.com/invite/XQ1AMO'>https://bingx.com/invite/XQ1AMO</a>\n\n"
+        "<b>Код: <code>XQ1AMO</code></b>\n\n"
+        "После регистрации по ссылке отправь <b>твой UID</b> нашему техническому специалисту: @Gold_Denys\n\n"
+        "После проверки ты сразу будешь добавлен в закрытый чат с сигналами 🔥"
     )
+    await callback_query.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 @router.callback_query(lambda c: c.data == "about")
-async def about(callback_query: types.CallbackQuery):
+async def about_handler(callback_query: types.CallbackQuery):
     await callback_query.message.answer("😈 Информация обо мне появится здесь позже.")
 
 @router.callback_query(lambda c: c.data == "reviews")
-async def reviews(callback_query: types.CallbackQuery):
+async def reviews_handler(callback_query: types.CallbackQuery):
     await callback_query.message.answer("📝 Отзывы будут добавлены позже.")
 
 @router.callback_query(lambda c: c.data == "stats")
-async def stats(callback_query: types.CallbackQuery):
+async def stats_handler(callback_query: types.CallbackQuery):
     await callback_query.message.answer("📊 Статистика будет добавлена позже.")
 
-# 🔹 Панель админа
+# Админ-панель
 @router.message(Command("admin"))
 async def admin_panel(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        await message.answer("🛠 Панель администратора", reply_markup=admin_kb)
+    if message.from_user.id != ADMIN_ID:
+        return
+    await message.answer("🛠 Панель администратора", reply_markup=admin_kb)
 
-# 🔹 Команды админа
 @router.message(lambda m: m.text == "📈 Статистика")
 async def admin_stats(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        users = db.get_all_users()
-        await message.answer(f"📊 В базе {len(users)} пользователей.")
+    if message.from_user.id != ADMIN_ID:
+        return
+    users = db.get_all_users()
+    await message.answer(f"📊 В базе {len(users)} пользователей.")
 
 @router.message(lambda m: m.text == "📥 Экспорт .xlsx")
 async def admin_export_excel(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        filename = db.export_users_to_excel()
-        await message.answer_document(types.FSInputFile(filename))
+    if message.from_user.id != ADMIN_ID:
+        return
+    filename = db.export_users_to_excel()
+    await message.answer_document(types.FSInputFile(filename))
 
 @router.message(lambda m: m.text == "📤 Рассылка")
 async def admin_broadcast_start(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        broadcast_mode[message.from_user.id] = True
-        await message.answer("✏️ Введи текст рассылки:")
+    if message.from_user.id != ADMIN_ID:
+        return
+    broadcast_mode[message.from_user.id] = True
+    await message.answer("✏️ Введи текст рассылки:")
 
 @router.message()
-async def admin_text(message: types.Message):
+async def handle_broadcast_text(message: types.Message):
     if broadcast_mode.get(message.from_user.id):
         users = db.get_all_users()
         count = 0
         for uid in users:
             try:
-                await bot.send_message(uid, f"📢 Сообщение:\n\n{message.text}")
+                await bot.send_message(uid, f"📢 Важно!:\n\n{message.text}")
                 count += 1
             except:
                 pass
         broadcast_mode[message.from_user.id] = False
-        await message.answer(f"✅ Отправлено {count} пользователям.")
+        await message.answer(f"✅ Рассылка отправлена {count} пользователям.")
 
-# 🔹 Запуск
+@router.message(lambda m: m.text == "➕ Добавить в чат")
+async def manual_add_to_chat(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await message.answer("🔢 Введи Telegram ID пользователя (число):")
+    broadcast_mode["add_uid"] = True
+
+@router.message()
+async def handle_add_uid(message: types.Message):
+    if broadcast_mode.get("add_uid") and message.from_user.id == ADMIN_ID:
+        try:
+            uid = int(message.text)
+            await bot.send_message(uid, "✅ Вы были добавлены в чат.")
+            await bot.add_chat_member(chat_id=GROUP_CHAT_ID, user_id=uid)
+            await message.answer("✅ Пользователь добавлен!")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {e}")
+        broadcast_mode["add_uid"] = False
+
+# 🔁 Запуск
 async def main():
     keep_alive()
     await dp.start_polling(bot)
