@@ -5,11 +5,14 @@ from datetime import datetime
 
 from aiogram import Bot, Dispatcher, Router, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton
+)
 from flask import Flask
 from threading import Thread
 
-import db
+import db  # твоя база данных с функциями add_user, get_all_users, export_users_to_excel
 
 # 🔐 Загрузка конфигурации из переменных окружения
 API_TOKEN = os.getenv("API_TOKEN")
@@ -26,24 +29,24 @@ def home():
 def run():
     app.run(host='0.0.0.0', port=8080)
 
-# 🧵 Запуск Flask в отдельном потоке
 def keep_alive():
     t = Thread(target=run)
+    t.daemon = True
     t.start()
 
 # 🔧 Логирование
 logging.basicConfig(level=logging.INFO)
 
-# 🤖 Инициализация бота и диспетчера
+# 🤖 Инициализация бота и диспетчера с ботом!
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 router = Router()
 dp.include_router(router)
 
-# Состояние рассылки
+# Состояние рассылки и добавления UID
 broadcast_mode = {}
 
-# Меню
+# Главное меню
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔥 ПОПАСТЬ В ЧАТ С СИГНАЛАМИ", callback_data="join_chat_info")],
     [InlineKeyboardButton(text="📝 ОТЗЫВЫ", callback_data="reviews")],
@@ -51,6 +54,7 @@ main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="😈 ОБО МНЕ", callback_data="about")]
 ])
 
+# Клавиатура админа
 admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
     [KeyboardButton(text="📤 Рассылка"), KeyboardButton(text="📈 Статистика")],
     [KeyboardButton(text="📥 Экспорт .xlsx"), KeyboardButton(text="➕ Добавить в чат")]
@@ -62,8 +66,8 @@ async def start_handler(message: types.Message):
     join_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         db.add_user(user.id, user.username or "", user.first_name or "", join_date)
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"DB add_user error: {e}")
 
     text = (
         "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
@@ -73,17 +77,16 @@ async def start_handler(message: types.Message):
         "🔹 обучающие уроки\n\n"
         "Для того, чтобы попасть в него, тебе необходимо зарегистрироваться на бирже BingX и пополнить баланс.\n\n"
         "<b>Для удобства прикрепляю инструкции:</b>\n\n"
-        "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>КАК ЗАРЕГИСТРИРОВАТЬСЯ НА БИРЖЕ BingX</a>\n\n"
-        "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>ПОШАГОВАЯ ИНСТРУКЦИЯ ПЕРЕНОСА ВЕРИФИКАЦИИ</a>\n\n"
-        "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>КАК КУПИТЬ КРИПТОВАЛЮТУ ЧЕРЕЗ P2P</a>\n\n"
-        "📘 <a href='https://telegra.ph/Rabota-so-sdelkami-na-BingX-06-13'>РАБОТА СО СДЕЛКАМИ НА BingX</a>\n\n"
+        "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>КАК ЗАРЕГИСТРИРОВАТЬСЯ НА БИРЖЕ BingX</a>\n"
+        "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>ПОШАГОВАЯ ИНСТРУКЦИЯ ПЕРЕНОСА ВЕРИФИКАЦИИ</a>\n"
+        "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>КАК КУПИТЬ КРИПТОВАЛЮТУ ЧЕРЕЗ P2P</a>\n"
+        "📘 <a href='https://telegra.ph/Rabota-so-sdelkami-na-BingX-06-13'>РАБОТА СО СДЕЛКАМИ НА BingX</a>\n"
         "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>ОТКРЫТИЕ LONG/SHORT СДЕЛОК</a>\n\n"
         "Если у тебя уже есть аккаунт на BingX — ты можешь <b>перенести его под мою ссылку</b>. Это несложно и займет 15 минут.\n\n"
         "Вопросы — пиши: @Gold_Denys"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_kb, disable_web_page_preview=True)
 
-# Обработка callback'ов
 @router.callback_query(lambda c: c.data == "join_chat_info")
 async def join_chat_info(callback_query: types.CallbackQuery):
     text = (
@@ -109,7 +112,6 @@ async def reviews_handler(callback_query: types.CallbackQuery):
 async def stats_handler(callback_query: types.CallbackQuery):
     await callback_query.message.answer("📊 Статистика будет добавлена позже.")
 
-# Админ-панель
 @router.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -137,40 +139,42 @@ async def admin_broadcast_start(message: types.Message):
     broadcast_mode[message.from_user.id] = True
     await message.answer("✏️ Введи текст рассылки:")
 
+@router.message(lambda m: m.text == "➕ Добавить в чат")
+async def manual_add_to_chat(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    broadcast_mode["add_uid"] = True
+    await message.answer("🔢 Введи Telegram ID пользователя (число):")
+
 @router.message()
-async def handle_broadcast_text(message: types.Message):
-    if broadcast_mode.get(message.from_user.id):
+async def general_handler(message: types.Message):
+    user_id = message.from_user.id
+
+    if broadcast_mode.get(user_id):
         users = db.get_all_users()
         count = 0
         for uid in users:
             try:
                 await bot.send_message(uid, f"📢 Важно!:\n\n{message.text}")
+                await asyncio.sleep(0.05)  # Антифлуд
                 count += 1
-            except:
-                pass
-        broadcast_mode[message.from_user.id] = False
+            except Exception as e:
+                logging.error(f"Failed to send to {uid}: {e}")
+        broadcast_mode[user_id] = False
         await message.answer(f"✅ Рассылка отправлена {count} пользователям.")
-
-@router.message(lambda m: m.text == "➕ Добавить в чат")
-async def manual_add_to_chat(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
         return
-    await message.answer("🔢 Введи Telegram ID пользователя (число):")
-    broadcast_mode["add_uid"] = True
 
-@router.message()
-async def handle_add_uid(message: types.Message):
-    if broadcast_mode.get("add_uid") and message.from_user.id == ADMIN_ID:
+    if broadcast_mode.get("add_uid") and user_id == ADMIN_ID:
         try:
             uid = int(message.text)
-            await bot.send_message(uid, "✅ Вы были добавлены в чат.")
-            await bot.add_chat_member(chat_id=GROUP_CHAT_ID, user_id=uid)
-            await message.answer("✅ Пользователь добавлен!")
+            invite_link = await bot.export_chat_invite_link(GROUP_CHAT_ID)
+            await bot.send_message(uid, f"✅ Вы были приглашены в чат по ссылке:\n{invite_link}")
+            await message.answer("✅ Приглашение отправлено пользователю!")
         except Exception as e:
             await message.answer(f"❌ Ошибка: {e}")
         broadcast_mode["add_uid"] = False
+        return
 
-# 🔁 Запуск
 async def main():
     keep_alive()
     await dp.start_polling(bot)
