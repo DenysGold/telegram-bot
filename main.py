@@ -15,56 +15,44 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters import Command
 
 from flask import Flask
-import db
+import db  # твоя база данных, как и было
 
 
-# Конфигурация
+# --- Конфигурация из переменных окружения ---
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
 
-# Логирование
+# --- Логирование ---
 logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота и диспетчера
+# --- Инициализация бота и диспетчера ---
 bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher(storage=MemoryStorage())
 
-# Flask keep-alive
+# --- Flask keep-alive для Render/Replit ---
 app = Flask(__name__)
+
 @app.route('/')
 def home():
     return "✅ Бот работает (Flask)!"
-def run(): app.run(host='0.0.0.0', port=8080)
-def keep_alive(): Thread(target=run).start()
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    Thread(target=run_flask).start()
 
 
-# Функция безопасной отправки длинных сообщений с HTML и ссылками
-async def send_long_message(chat_id: int, text: str):
-    MAX_LENGTH = 4000
-    # Разбиваем текст по границам длины, стараясь не резать теги и строки
-    start = 0
-    while start < len(text):
-        # Ищем конец для среза
-        end = min(start + MAX_LENGTH, len(text))
-        # Чтобы не резать теги и слова, откатываем к предыдущему \n или пробелу, если не в начале
-        if end < len(text):
-            last_newline = text.rfind('\n', start, end)
-            if last_newline > start:
-                end = last_newline + 1
-        part = text[start:end].strip()
-        if part:
-            await bot.send_message(chat_id, part, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
-        start = end
+# --- Клавиатуры ---
 
-
-# Клавиатуры
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔥 ПОПАСТЬ В ЧАТ С СИГНАЛАМИ", callback_data="join_chat_info")],
     [InlineKeyboardButton(text="📝 ОТЗЫВЫ", callback_data="reviews")],
     [InlineKeyboardButton(text="📊 СТАТИСТИКА", callback_data="stats")],
     [InlineKeyboardButton(text="😈 ОБО МНЕ", callback_data="about")]
 ])
+
 admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
     [KeyboardButton(text="📤 Рассылка"), KeyboardButton(text="📈 Статистика")],
     [KeyboardButton(text="📥 Экспорт .xlsx"), KeyboardButton(text="➕ Добавить в чат")]
@@ -73,7 +61,9 @@ admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
 broadcast_mode = {}
 add_mode = {}
 
-# Текст приветственного сообщения с полной подборкой статей, включая потерянную
+
+# --- Приветственное сообщение ---
+
 WELCOME_TEXT = (
     "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
     "Здесь тебя ждут:\n"
@@ -89,22 +79,59 @@ WELCOME_TEXT = (
     "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>ОТКРЫТИЕ LONG/SHORT СДЕЛОК</a>\n\n"
     "Если у тебя уже есть аккаунт на BingX — ты можешь перенести его под мою ссылку. Это несложно и займет 15 минут.\n\n"
     "Вопросы — пиши: @Gold_Denys"
-    parse_mode=ParseMode.HTML
 )
 
 
-# Хендлеры
+# --- Функция отправки длинных сообщений с кнопками и без превью ---
+async def send_long_message(chat_id: int, text: str, reply_markup=None, disable_web_page_preview=True):
+    MAX_LENGTH = 4000
+    start = 0
+    while start < len(text):
+        end = min(start + MAX_LENGTH, len(text))
+        # Не резать посреди строки, ищем последний перенос строки
+        if end < len(text):
+            last_newline = text.rfind('\n', start, end)
+            if last_newline > start:
+                end = last_newline + 1
+        part = text[start:end].strip()
+        if part:
+            # Кнопки добавляем только к первому сообщению, иначе None
+            await bot.send_message(
+                chat_id,
+                part,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=disable_web_page_preview,
+                reply_markup=reply_markup if start == 0 else None
+            )
+        start = end
+
+
+# --- Хендлер /start ---
+
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     user = message.from_user
     try:
-        db.add_user(user.id, user.username or "", user.first_name or "", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        # Добавляем пользователя в БД
+        db.add_user(
+            user.id,
+            user.username or "",
+            user.first_name or "",
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        )
     except Exception as e:
         logging.error(f"Error adding user: {e}")
 
-    # Отправляем длинное сообщение через нашу функцию
-    await send_long_message(message.chat.id, WELCOME_TEXT)
+    # Отправляем приветственное сообщение с клавиатурой и без превью
+    await send_long_message(
+        message.chat.id,
+        WELCOME_TEXT,
+        reply_markup=main_kb,
+        disable_web_page_preview=True
+    )
 
+
+# --- Хендлеры callback-кнопок ---
 
 @dp.callback_query(F.data == "join_chat_info")
 async def join_chat_info(callback: CallbackQuery):
@@ -115,7 +142,7 @@ async def join_chat_info(callback: CallbackQuery):
         "Код: <code>XQ1AMO</code>\n\n"
         "После — отправь UID в @Gold_Denys"
     )
-    await send_long_message(callback.message.chat.id, text)
+    await send_long_message(callback.message.chat.id, text, disable_web_page_preview=True)
 
 @dp.callback_query(F.data == "about")
 async def about_handler(callback: CallbackQuery):
@@ -129,10 +156,14 @@ async def reviews_handler(callback: CallbackQuery):
 async def stats_handler(callback: CallbackQuery):
     await callback.message.answer("📊 Статистика будет добавлена позже.")
 
+
+# --- Админ-панель и команды ---
+
 @dp.message(Command("admin"))
 async def admin_panel(message: Message):
     if message.from_user.id == ADMIN_ID:
         await message.answer("🛠 Панель администратора", reply_markup=admin_kb)
+
 
 @dp.message(F.text == "📈 Статистика")
 async def admin_stats(message: Message):
@@ -140,11 +171,13 @@ async def admin_stats(message: Message):
         users = db.get_all_users()
         await message.answer(f"📊 В базе {len(users)} пользователей.")
 
+
 @dp.message(F.text == "📥 Экспорт .xlsx")
 async def export_excel(message: Message):
     if message.from_user.id == ADMIN_ID:
         filename = db.export_users_to_excel()
         await message.answer_document(FSInputFile(filename))
+
 
 @dp.message(F.text == "📤 Рассылка")
 async def start_broadcast(message: Message):
@@ -152,11 +185,13 @@ async def start_broadcast(message: Message):
         broadcast_mode[message.from_user.id] = True
         await message.answer("✏️ Введи текст рассылки:")
 
+
 @dp.message(F.text == "➕ Добавить в чат")
 async def start_add_user(message: Message):
     if message.from_user.id == ADMIN_ID:
         add_mode[message.from_user.id] = True
         await message.answer("🔢 Введи Telegram ID пользователя (число):")
+
 
 @dp.message()
 async def fallback_handler(message: Message):
@@ -183,10 +218,11 @@ async def fallback_handler(message: Message):
         add_mode[uid] = False
 
 
-# Запуск бота
+# --- Запуск бота и Flask ---
 async def main():
-    keep_alive()
+    keep_alive()  # flask запущен в фоне
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
