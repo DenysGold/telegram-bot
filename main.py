@@ -89,8 +89,6 @@ WELCOME_TEXT = (
     "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>ОТКРЫТИЕ LONG/SHORT СДЕЛОК</a>\n\n"
     "Если у тебя уже есть аккаунт на BingX — ты можешь перенести его под мою ссылку. Это несложно и займет 15 минут.\n\n"
     "Вопросы — пиши: @Gold_Denys"
-    reply_markup=main_kb,
-    disable_web_page_preview=True
     parse_mode=ParseMode.HTML
 )
 
