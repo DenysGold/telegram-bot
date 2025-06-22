@@ -1,0 +1,8 @@
+nano start.sh
+#!/bin/bash
+source venv/bin/activate
+python main.py
+chmod +x start.sh
+#!/bin/bash
+source venv/bin/activate
+python main.py
