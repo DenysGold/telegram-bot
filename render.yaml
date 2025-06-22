@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: telegram-bot
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    autoDeploy: true
+    envVars:
+      - key: API_TOKEN
+        value: "7920083802:AAEi4cYNYg_oEPPXDldV8corWs7HgHwQtKI"
+      - key: ADMIN_ID
+        value: "123456789"
+      - key: GROUP_CHAT_ID
+        value: "-1001234567890"

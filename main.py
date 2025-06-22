@@ -38,6 +38,26 @@ def home():
 def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive(): Thread(target=run).start()
 
+
+# Функция безопасной отправки длинных сообщений с HTML и ссылками
+async def send_long_message(chat_id: int, text: str):
+    MAX_LENGTH = 4000
+    # Разбиваем текст по границам длины, стараясь не резать теги и строки
+    start = 0
+    while start < len(text):
+        # Ищем конец для среза
+        end = min(start + MAX_LENGTH, len(text))
+        # Чтобы не резать теги и слова, откатываем к предыдущему \n или пробелу, если не в начале
+        if end < len(text):
+            last_newline = text.rfind('\n', start, end)
+            if last_newline > start:
+                end = last_newline + 1
+        part = text[start:end].strip()
+        if part:
+            await bot.send_message(chat_id, part, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
+        start = end
+
+
 # Клавиатуры
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔥 ПОПАСТЬ В ЧАТ С СИГНАЛАМИ", callback_data="join_chat_info")],
@@ -53,40 +73,44 @@ admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
 broadcast_mode = {}
 add_mode = {}
 
+# Текст приветственного сообщения с полной подборкой статей, включая потерянную
+WELCOME_TEXT = (
+    "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
+    "🔹 сигналы на сделки\n"
+    "🔹 инвестиционные идеи\n"
+    "🔹 обучающие уроки\n\n"
+    "<b>Инструкции и статьи:</b>\n"
+    "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>РЕГИСТРАЦИЯ BingX</a>\n"
+    "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>ПЕРЕНОС ВЕРИФИКАЦИИ</a>\n"
+    "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>ПОКУПКА КРИПТЫ</a>\n"
+    "📘 <a href='https://telegra.ph/Rabota-so-sdelkami-na-BingX-06-13'>РАБОТА СО СДЕЛКАМИ НА BINGX</a>\n"
+    "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>СДЕЛКИ LONG/SHORT</a>\n\n"
+    "Вопросы — пиши: @Gold_Denys"
+)
+
 # Хендлеры
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     user = message.from_user
     try:
         db.add_user(user.id, user.username or "", user.first_name or "", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Error adding user: {e}")
 
-    await message.answer(
-        "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
-        "🔹 сигналы на сделки\n"
-        "🔹 инвестиционные идеи\n"
-        "🔹 обучающие уроки\n\n"
-        "<b>Инструкции:</b>\n"
-        "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>РЕГИСТРАЦИЯ BingX</a>\n"
-        "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>ПЕРЕНОС ВЕРИФИКАЦИИ</a>\n"
-        "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>ПОКУПКА КРИПТЫ</a>\n"
-        "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>СДЕЛКИ LONG/SHORT</a>\n\n"
-        "Вопросы — пиши: @Gold_Denys",
-        reply_markup=main_kb,
-        disable_web_page_preview=True
-    )
+    # Отправляем длинное сообщение через нашу функцию
+    await send_long_message(message.chat.id, WELCOME_TEXT)
+
 
 @dp.callback_query(F.data == "join_chat_info")
 async def join_chat_info(callback: CallbackQuery):
-    await callback.message.answer(
+    text = (
         "<b>Чтобы попасть в чат с сигналами</b>\n\n"
         "⚠️ Зарегистрируйся по моей реф-ссылке:\n"
         "👉 <a href='https://bingx.com/invite/XQ1AMO'>https://bingx.com/invite/XQ1AMO</a>\n"
         "Код: <code>XQ1AMO</code>\n\n"
-        "После — отправь UID в @Gold_Denys",
-        disable_web_page_preview=True
+        "После — отправь UID в @Gold_Denys"
     )
+    await send_long_message(callback.message.chat.id, text)
 
 @dp.callback_query(F.data == "about")
 async def about_handler(callback: CallbackQuery):
@@ -139,7 +163,7 @@ async def fallback_handler(message: Message):
             try:
                 await bot.send_message(user_id, f"📢 Важно:\n\n{message.text}")
                 count += 1
-            except:
+            except Exception:
                 continue
         broadcast_mode[uid] = False
         await message.answer(f"✅ Отправлено {count} пользователям.")
@@ -152,6 +176,7 @@ async def fallback_handler(message: Message):
         except Exception as e:
             await message.answer(f"❌ Ошибка: {e}")
         add_mode[uid] = False
+
 
 # Запуск бота
 async def main():
