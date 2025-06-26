@@ -12,8 +12,6 @@ from aiogram.types import (
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from flask import Flask
-from threading import Thread
 import db
 
 # --- Настройки из .env ---
@@ -21,6 +19,7 @@ API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 8080))
 
 # --- Логирование ---
 logging.basicConfig(level=logging.INFO)
@@ -28,16 +27,6 @@ logging.basicConfig(level=logging.INFO)
 # --- Инициализация бота и диспетчера ---
 bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher(storage=MemoryStorage())
-
-# --- Flask сервер для keep-alive (Render) ---
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return "Bot is alive!"
-
-def keep_alive():
-    Thread(target=lambda: flask_app.run(host="0.0.0.0", port=8080)).start()
 
 # --- Клавиатуры ---
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -55,7 +44,6 @@ admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
 broadcast_mode = {}
 add_mode = {}
 
-# --- Текст приветствия ---
 WELCOME_TEXT = (
     "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
     "Здесь тебя ждут:\n"
@@ -73,7 +61,7 @@ WELCOME_TEXT = (
     "Вопросы — пиши: @Gold_Denys"
 )
 
-# --- Хендлер команды /start ---
+# --- Обработчики ---
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     user = message.from_user
@@ -82,13 +70,8 @@ async def start_handler(message: Message):
     except Exception as e:
         logging.error(f"Ошибка добавления пользователя: {e}")
 
-    await message.answer(
-        WELCOME_TEXT,
-        reply_markup=main_kb,
-        disable_web_page_preview=True
-    )
+    await message.answer(WELCOME_TEXT, reply_markup=main_kb, disable_web_page_preview=True)
 
-# --- Callback кнопки ---
 @dp.callback_query(F.data == "join_chat_info")
 async def join_chat_info(callback: CallbackQuery):
     await callback.message.answer(
@@ -112,7 +95,6 @@ async def reviews_handler(callback: CallbackQuery):
 async def stats_handler(callback: CallbackQuery):
     await callback.message.answer("📊 Статистика будет добавлена позже.")
 
-# --- Админские команды ---
 @dp.message(Command("admin"))
 async def admin_panel(message: Message):
     if message.from_user.id == ADMIN_ID:
@@ -166,16 +148,18 @@ async def fallback_handler(message: Message):
             await message.answer(f"❌ Ошибка: {e}")
         add_mode[uid] = False
 
-# --- Webhook: запуск и остановка ---
+# --- Вебхуки ---
 async def on_startup(bot: Bot):
     await bot.set_webhook(WEBHOOK_URL)
 
 async def on_shutdown(bot: Bot):
     await bot.delete_webhook()
 
-# --- Основная функция для запуска вебхука и Flask ---
+# --- Эндпоинт для проверки работы сервера ---
+async def handle_root(request):
+    return web.Response(text="Bot is alive!")
+
 async def main():
-    keep_alive()  # Flask keep-alive для Render
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
@@ -183,7 +167,11 @@ async def main():
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
     setup_application(app, dp, bot=bot)
 
-    web.run_app(app, host="0.0.0.0", port=8080)
+    # Добавляем простой маршрут для keep-alive (Render пингует корень)
+    app.router.add_get('/', handle_root)
+
+    # Запуск aiohttp сервера
+    web.run_app(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
     import asyncio
