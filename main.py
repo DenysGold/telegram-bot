@@ -1,25 +1,22 @@
-import asyncio
-import logging
 import os
+import logging
 from datetime import datetime
-from threading import Thread
-
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums.parse_mode import ParseMode
+from aiogram.filters import Command
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
     ReplyKeyboardMarkup, KeyboardButton, FSInputFile
 )
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.filters import Command
-
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from flask import Flask
-import db  # твоя база данных, как и было
+from threading import Thread
+import db
 
-# --- Конфигурация из .env ---
+# --- Настройки из .env ---
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
@@ -32,18 +29,15 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- Flask keep-alive для Render ---
-app = Flask(__name__)
+# --- Flask сервер для keep-alive (Render) ---
+flask_app = Flask(__name__)
 
-@app.route('/')
+@flask_app.route('/')
 def home():
-    return "✅ Бот работает (Flask)!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+    return "Bot is alive!"
 
 def keep_alive():
-    Thread(target=run_flask).start()
+    Thread(target=lambda: flask_app.run(host="0.0.0.0", port=8080)).start()
 
 # --- Клавиатуры ---
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -55,52 +49,56 @@ main_kb = InlineKeyboardMarkup(inline_keyboard=[
 
 admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
     [KeyboardButton(text="📤 Рассылка"), KeyboardButton(text="📈 Статистика")],
-    [KeyboardButton(text="📥 Экспорт .xlsx"), KeyboardButton(text="➕ Добавить в чат")]
+    [KeyboardButton(text="📅 Экспорт .xlsx"), KeyboardButton(text="➕ Добавить в чат")]
 ])
 
 broadcast_mode = {}
 add_mode = {}
 
-# --- Приветственное сообщение ---
+# --- Текст приветствия ---
 WELCOME_TEXT = (
-    "👋 Привет друг, ... (сокращено для примера)")
+    "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
+    "Здесь тебя ждут:\n"
+    "🔹 сигналы на сделки\n"
+    "🔹 инвестиционные идеи\n"
+    "🔹 обучающие уроки\n\n"
+    "Для того, чтобы попасть в него, тебе необходимо зарегистрироваться на бирже BingX и пополнить баланс.\n\n"
+    "Для удобства прикрепляю инструкции:\n\n"
+    "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>КАК ЗАРЕГИСТРИРОВАТЬСЯ НА БИРЖЕ BingX</a>\n\n"
+    "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>ПОШАГОВАЯ ИНСТРУКЦИЯ ПЕРЕНОСА ВЕРИФИКАЦИИ</a>\n\n"
+    "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>КАК КУПИТЬ КРИПТОВАЛЮТУ ЧЕРЕЗ P2P</a>\n\n"
+    "📘 <a href='https://telegra.ph/Rabota-so-sdelkami-na-BingX-06-13'>РАБОТА СО СДЕЛКАМИ НА BingX</a>\n\n"
+    "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>ОТКРЫТИЕ LONG/SHORT СДЕЛОК</a>\n\n"
+    "Если у тебя уже есть аккаунт на BingX — ты можешь перенести его под мою ссылку. Это несложно и займёт 15 минут.\n\n"
+    "Вопросы — пиши: @Gold_Denys"
+)
 
-# --- Длинное сообщение с кнопками ---
-async def send_long_message(chat_id: int, text: str, reply_markup=None, disable_web_page_preview=True):
-    MAX_LENGTH = 4000
-    start = 0
-    while start < len(text):
-        end = min(start + MAX_LENGTH, len(text))
-        if end < len(text):
-            last_newline = text.rfind('\n', start, end)
-            if last_newline > start:
-                end = last_newline + 1
-        part = text[start:end].strip()
-        if part:
-            await bot.send_message(
-                chat_id,
-                part,
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=disable_web_page_preview,
-                reply_markup=reply_markup if start == 0 else None
-            )
-        start = end
-
-# --- Хендлер /start ---
+# --- Хендлер команды /start ---
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     user = message.from_user
     try:
         db.add_user(user.id, user.username or "", user.first_name or "", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     except Exception as e:
-        logging.error(f"DB error: {e}")
+        logging.error(f"Ошибка добавления пользователя: {e}")
 
-    await send_long_message(message.chat.id, WELCOME_TEXT, reply_markup=main_kb, disable_web_page_preview=True)
+    await message.answer(
+        WELCOME_TEXT,
+        reply_markup=main_kb,
+        disable_web_page_preview=True
+    )
 
-# --- Callback хендлеры ---
+# --- Callback кнопки ---
 @dp.callback_query(F.data == "join_chat_info")
 async def join_chat_info(callback: CallbackQuery):
-    await send_long_message(callback.message.chat.id, "<b>Чтобы попасть в чат...</b>", disable_web_page_preview=True)
+    await callback.message.answer(
+        "<b>Чтобы попасть в чат с сигналами</b>\n\n"
+        "⚠️ Зарегистрируйся по моей реф-ссылке:\n"
+        "👉 <a href='https://bingx.com/invite/XQ1AMO'>https://bingx.com/invite/XQ1AMO</a>\n"
+        "Код: <code>XQ1AMO</code>\n\n"
+        "После — отправь UID в @Gold_Denys",
+        disable_web_page_preview=True
+    )
 
 @dp.callback_query(F.data == "about")
 async def about_handler(callback: CallbackQuery):
@@ -114,11 +112,11 @@ async def reviews_handler(callback: CallbackQuery):
 async def stats_handler(callback: CallbackQuery):
     await callback.message.answer("📊 Статистика будет добавлена позже.")
 
-# --- Админ-команды ---
+# --- Админские команды ---
 @dp.message(Command("admin"))
 async def admin_panel(message: Message):
     if message.from_user.id == ADMIN_ID:
-        await message.answer("🛠️ Панель администратора", reply_markup=admin_kb)
+        await message.answer("🛠 Панель администратора", reply_markup=admin_kb)
 
 @dp.message(F.text == "📈 Статистика")
 async def admin_stats(message: Message):
@@ -126,16 +124,58 @@ async def admin_stats(message: Message):
         users = db.get_all_users()
         await message.answer(f"📊 В базе {len(users)} пользователей.")
 
-# --- Webhook конфигурация ---
+@dp.message(F.text == "📅 Экспорт .xlsx")
+async def export_excel(message: Message):
+    if message.from_user.id == ADMIN_ID:
+        filename = db.export_users_to_excel()
+        await message.answer_document(FSInputFile(filename))
+
+@dp.message(F.text == "📤 Рассылка")
+async def start_broadcast(message: Message):
+    if message.from_user.id == ADMIN_ID:
+        broadcast_mode[message.from_user.id] = True
+        await message.answer("✏️ Введи текст рассылки:")
+
+@dp.message(F.text == "➕ Добавить в чат")
+async def start_add_user(message: Message):
+    if message.from_user.id == ADMIN_ID:
+        add_mode[message.from_user.id] = True
+        await message.answer("🔢 Введи Telegram ID пользователя (число):")
+
+@dp.message()
+async def fallback_handler(message: Message):
+    uid = message.from_user.id
+    if broadcast_mode.get(uid):
+        users = db.get_all_users()
+        count = 0
+        for user_id in users:
+            try:
+                await bot.send_message(user_id, f"📢 Важно:\n\n{message.text}")
+                count += 1
+            except Exception:
+                continue
+        broadcast_mode[uid] = False
+        await message.answer(f"✅ Отправлено {count} пользователям.")
+    elif add_mode.get(uid):
+        try:
+            new_id = int(message.text)
+            await bot.send_message(new_id, "✅ Вы были добавлены в чат.")
+            await bot.add_chat_member(chat_id=GROUP_CHAT_ID, user_id=new_id)
+            await message.answer("✅ Пользователь добавлен!")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {e}")
+        add_mode[uid] = False
+
+# --- Webhook: запуск и остановка ---
 async def on_startup(bot: Bot):
     await bot.set_webhook(WEBHOOK_URL)
 
 async def on_shutdown(bot: Bot):
     await bot.delete_webhook()
 
-# --- Основной запуск ---
+# --- Основная функция для запуска вебхука и Flask ---
 async def main():
-    keep_alive()
+    keep_alive()  # Flask keep-alive для Render
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
@@ -146,4 +186,5 @@ async def main():
     web.run_app(app, host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
