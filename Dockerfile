@@ -12,8 +12,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем весь проект
 COPY . .
 
-# Открываем порт для Cloud Run
-EXPOSE 8080
-
-# Запускаем бота и Flask сервер через Python
+# Запускаем бота через Python
 CMD ["python3", "main.py"]
