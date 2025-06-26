@@ -22,7 +22,7 @@ PORT = int(os.getenv("PORT", 8080))
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN, default=bot.DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(token=API_TOKEN, default=Bot.DefaultBotProperties(parse_mode=ParseMode.HTML))  # <--- исправлено здесь
 dp = Dispatcher(storage=MemoryStorage())
 
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
