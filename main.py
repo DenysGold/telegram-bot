@@ -14,7 +14,6 @@ from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 import db
 
-# Чтение переменных окружения
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
@@ -23,7 +22,7 @@ PORT = int(os.getenv("PORT", 8080))
 
 logging.basicConfig(level=logging.INFO)
 
-# ✅ Инициализация бота (ИСПРАВЛЕНО)
+# ✅ Бот без запуска asyncio внутри asyncio
 bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -40,7 +39,6 @@ admin_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
     [KeyboardButton(text="📅 Экспорт .xlsx"), KeyboardButton(text="➕ Добавить в чат")]
 ])
 
-# --- Глобальные флаги ---
 broadcast_mode = {}
 add_mode = {}
 
@@ -58,7 +56,6 @@ WELCOME_TEXT = (
     "Вопросы — @Gold_Denys"
 )
 
-# --- Хендлеры ---
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     user = message.from_user
@@ -152,7 +149,8 @@ async def on_shutdown(bot: Bot):
 async def handle_root(request):
     return web.Response(text="Bot is alive!")
 
-async def main():
+# --- ГЛАВНАЯ ТОЧКА ВХОДА ---
+def main():
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
@@ -163,6 +161,6 @@ async def main():
 
     web.run_app(app, host="0.0.0.0", port=PORT)
 
+# 🚀 Запуск
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
