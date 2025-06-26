@@ -14,21 +14,17 @@ from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 import db
 
-# --- Настройки из .env ---
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "0"))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.getenv("PORT", 8080))
 
-# --- Логирование ---
 logging.basicConfig(level=logging.INFO)
 
-# --- Инициализация бота и диспетчера ---
-bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(token=API_TOKEN, default=bot.DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
-# --- Клавиатуры ---
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔥 ПОПАСТЬ В ЧАТ С СИГНАЛАМИ", callback_data="join_chat_info")],
     [InlineKeyboardButton(text="📝 ОТЗЫВЫ", callback_data="reviews")],
@@ -46,22 +42,18 @@ add_mode = {}
 
 WELCOME_TEXT = (
     "👋 Привет друг, здесь можно получить доступ к нашему торговому комьюнити.\n\n"
-    "Здесь тебя ждут:\n"
     "🔹 сигналы на сделки\n"
     "🔹 инвестиционные идеи\n"
     "🔹 обучающие уроки\n\n"
-    "Для того, чтобы попасть в него, тебе необходимо зарегистрироваться на бирже BingX и пополнить баланс.\n\n"
-    "Для удобства прикрепляю инструкции:\n\n"
-    "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>КАК ЗАРЕГИСТРИРОВАТЬСЯ НА БИРЖЕ BingX</a>\n\n"
-    "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>ПОШАГОВАЯ ИНСТРУКЦИЯ ПЕРЕНОСА ВЕРИФИКАЦИИ</a>\n\n"
-    "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>КАК КУПИТЬ КРИПТОВАЛЮТУ ЧЕРЕЗ P2P</a>\n\n"
-    "📘 <a href='https://telegra.ph/Rabota-so-sdelkami-na-BingX-06-13'>РАБОТА СО СДЕЛКАМИ НА BingX</a>\n\n"
-    "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>ОТКРЫТИЕ LONG/SHORT СДЕЛОК</a>\n\n"
-    "Если у тебя уже есть аккаунт на BingX — ты можешь перенести его под мою ссылку. Это несложно и займёт 15 минут.\n\n"
-    "Вопросы — пиши: @Gold_Denys"
+    "📘 <a href='https://telegra.ph/Kak-zaregistrirovatsya-na-kripto-birzhe-BingX-06-13'>Регистрация на BingX</a>\n"
+    "📘 <a href='https://telegra.ph/Instrukciya-po-perenosu-KYC-06-13'>Перенос верификации</a>\n"
+    "📘 <a href='https://telegra.ph/Kak-kupit-kriptovalyutu-na-birzhe-BingX-06-13'>Как купить крипту</a>\n"
+    "📘 <a href='https://telegra.ph/Rabota-so-sdelkami-na-BingX-06-13'>Работа со сделками</a>\n"
+    "📘 <a href='https://telegra.ph/Otkrytie-sdelki-LONG-i-SHORT-06-14'>Открытие сделок</a>\n\n"
+    "Если аккаунт уже есть — перенеси под мою ссылку\n"
+    "Вопросы — @Gold_Denys"
 )
 
-# --- Обработчики ---
 @dp.message(Command("start"))
 async def start_handler(message: Message):
     user = message.from_user
@@ -69,19 +61,16 @@ async def start_handler(message: Message):
         db.add_user(user.id, user.username or "", user.first_name or "", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     except Exception as e:
         logging.error(f"Ошибка добавления пользователя: {e}")
-
     await message.answer(WELCOME_TEXT, reply_markup=main_kb, disable_web_page_preview=True)
 
 @dp.callback_query(F.data == "join_chat_info")
 async def join_chat_info(callback: CallbackQuery):
     await callback.message.answer(
         "<b>Чтобы попасть в чат с сигналами</b>\n\n"
-        "⚠️ Зарегистрируйся по моей реф-ссылке:\n"
+        "⚠️ Зарегистрируйся по ссылке:\n"
         "👉 <a href='https://bingx.com/invite/XQ1AMO'>https://bingx.com/invite/XQ1AMO</a>\n"
         "Код: <code>XQ1AMO</code>\n\n"
-        "После — отправь UID в @Gold_Denys",
-        disable_web_page_preview=True
-    )
+        "После — отправь UID в @Gold_Denys", disable_web_page_preview=True)
 
 @dp.callback_query(F.data == "about")
 async def about_handler(callback: CallbackQuery):
@@ -148,14 +137,13 @@ async def fallback_handler(message: Message):
             await message.answer(f"❌ Ошибка: {e}")
         add_mode[uid] = False
 
-# --- Вебхуки ---
+# --- Вебхук ---
 async def on_startup(bot: Bot):
     await bot.set_webhook(WEBHOOK_URL)
 
 async def on_shutdown(bot: Bot):
     await bot.delete_webhook()
 
-# --- Эндпоинт для проверки работы сервера ---
 async def handle_root(request):
     return web.Response(text="Bot is alive!")
 
@@ -166,11 +154,8 @@ async def main():
     app = web.Application()
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
     setup_application(app, dp, bot=bot)
+    app.router.add_get("/", handle_root)
 
-    # Добавляем простой маршрут для keep-alive (Render пингует корень)
-    app.router.add_get('/', handle_root)
-
-    # Запуск aiohttp сервера
     web.run_app(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
