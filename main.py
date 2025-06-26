@@ -22,8 +22,10 @@ PORT = int(os.getenv("PORT", 8080))
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN, default=Bot.DefaultBotProperties(parse_mode=ParseMode.HTML))  # <--- исправлено здесь
+# ✅ Правильная инициализация бота
+bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher(storage=MemoryStorage())
+
 
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🔥 ПОПАСТЬ В ЧАТ С СИГНАЛАМИ", callback_data="join_chat_info")],
